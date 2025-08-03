@@ -1,0 +1,116 @@
+---
+title: "Outlier Chart"
+output: html_document
+date: "2025-07-27"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+
+library(shiny)
+library(ggplot2)
+library(tidyverse)
+library(igraph)
+library(ggrepel)
+library(scales)
+
+```
+
+
+```{r}
+
+country_metrics <- read_csv("~/Desktop/School/Stat 436/countries_metric - Sheet1.csv")
+
+country_metrics <- country_metrics %>%
+  filter(!is.na(GINI)) %>%
+  mutate(
+    GINI = as.numeric(GINI),
+    `Human Development Index (HDI)` = as.numeric(`Human Development Index (HDI)`),
+    HDI_class = cut(
+      `Human Development Index (HDI)`,
+      breaks = c(0, 0.550, 0.700, 0.800, 1),
+      labels = c("Low", "Medium", "High", "Very High")
+    )
+  ) %>%
+  rename("HDI Classification" = HDI_class) %>%
+  filter(!is.na(`HDI Classification`))
+
+# Identify outlier countries
+outlier_countries <- country_metrics %>%
+  filter(
+    !is.na(`GDP Per capita PPP (in USD)`),
+    !is.na(`Human Development Index (HDI)`),
+    !is.na(GINI)
+  ) %>%
+  mutate(outlier = case_when(
+    `GDP Per capita PPP (in USD)` > 45085 & GINI > 40 ~ "High GDP, High GINI",
+    `GDP Per capita PPP (in USD)` < 6019 & GINI < 30 ~ "Low GDP, Low GINI",
+    TRUE ~ NA_character_
+  )) %>%
+  filter(!is.na(outlier))
+
+ui <- fluidPage(
+  titlePanel("Outlier Country Comparison"),
+  
+  sidebarLayout(
+    sidebarPanel(
+      selectInput(
+        inputId = "selected_country",
+        label = "Select Outlier Country:",
+        choices = unique(outlier_countries$country_name),
+        selected = unique(outlier_countries$country_name)[1],
+        multiple = TRUE
+      )
+    ),
+    
+    mainPanel(
+      plotOutput("scatterPlot"),
+      plotOutput("slopeChart")
+    )
+  )
+)
+
+server <- function(input, output) {
+  
+  filtered_data <- reactive({
+    outlier_countries %>% filter(country_name == input$selected_country)
+  })
+  
+  output$scatterPlot <- renderPlot({
+    ggplot(filtered_data(), aes(x = `GDP Per capita PPP (in USD)`, y = GINI)) +
+      geom_point(aes(color = `Human Development Index (HDI)`), size = 3, alpha = 0.8) +
+      scale_color_gradient(low = "blue", high = "red", name = "HDI") +
+      geom_text_repel(aes(label = country_name), size = 3.5, max.overlaps = 10) +
+      labs(
+        title = "Outlier Spotlight: Income Equality vs Wealth",
+        x = "GDP Per Capita (PPP, USD)",
+        y = "GINI Index"
+      ) +
+      theme_minimal()
+  })
+  
+  output$slopeChart <- renderPlot({
+    data <- filtered_data() %>%
+      pivot_longer(cols = c(GINI, `Human Development Index (HDI)`),
+                   names_to = "Metric", values_to = "Value")
+    
+    ggplot(data, aes(x = Metric, y = Value, group = country_name, color = country_name)) +
+      geom_line(linewidth = 1) +
+      geom_point(size = 3) +
+      labs(
+        title = "GINI vs HDI Comparison by Country",
+        x = "Metric",
+        y = "Value"
+      ) +
+      theme_minimal() +
+      theme(legend.title = element_blank())
+  })
+}
+
+shinyApp(ui = ui, server = server)
+
+```
+

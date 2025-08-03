@@ -1,0 +1,61 @@
+---
+title: "GINI vs. GDP Chart"
+output: html_document
+date: "2025-07-27"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+
+library(shiny)
+library(ggplot2)
+library(tidyverse)
+library(igraph)
+
+```
+
+```{r}
+
+countries <- read_csv("~/Desktop/School/Stat 436/countries_metric - Sheet1.csv")
+
+countries <- countries %>% 
+  filter(!is.na(`GINI`))
+
+countries$GINI <- as.numeric(countries$GINI)
+
+countries$`Human Development Index (HDI)` <- as.numeric(countries$`Human Development Index (HDI)`)
+
+countries <- countries %>% 
+  mutate(HDI_class = cut(
+    `Human Development Index (HDI)`,
+    breaks = c(0, 0.550, 0.700, 0.800, 1),
+    labels = c("Low", "Medium", "High", "Very High")
+  ))
+
+countries <- countries %>% 
+  rename(
+    "HDI Classification" = HDI_class
+  )
+  
+countries <- countries %>% 
+  filter(!is.na(`HDI Classification`))
+
+ggplot(countries) +
+  geom_point(aes(x = `GDP Per capita PPP (in USD)`, y = `GINI`, color = `HDI Classification`)) +
+  scale_color_manual(
+    values = c("Low" = "red", "Medium" = "orange", "High" = "blue", "Very High" = "green"),
+    labels = c("Low" = "Low (0 - 0.549)",
+             "Medium" = "Medium (0.550 - 0.699)",
+             "High" = "High (0.700 - 0.799)",
+             "Very High" = "Very High (0.800 - 1)")) +
+  scale_y_continuous(breaks = seq(15, 65, by = 5)) +
+  labs(title = "Income Equality vs. Wealth",
+       x = "GDP Per Capita (PPP, USD)",
+       y = "GINI Index") +
+  theme_minimal()
+
+```
+

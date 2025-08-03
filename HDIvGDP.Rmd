@@ -1,0 +1,114 @@
+---
+output: html_document
+runtime: shiny
+---
+```{r}
+library(tidyverse)
+library(shiny)
+country_metrics <- read_csv("../Data/countries_metric.csv") %>% 
+  mutate(HDI = as.double(`Human Development Index (HDI)`)) %>%
+  mutate(Pop = log10(`Population (in millions)`)) %>%  
+  mutate(GDP = log10(`Nominal GDP Per capita (in USD)`)) %>%
+  mutate(GDP_PPP = log10(`GDP Per capita PPP (in USD)`)) %>% 
+  filter(country_name != "Niger") %>% 
+  drop_na()
+
+ggplot(country_metrics, aes(x = GDP_PPP, y = HDI))+
+  geom_point()
+ggplot(country_metrics, aes(Pop))+
+  geom_histogram()
+```
+
+```{r}
+#Shiny App for HDI vs GDP with Population dist
+library(DT)
+
+ui <- fluidPage(
+  fluidRow(
+  column(6,plotOutput("scatterplot",
+             brush = "myBrush")),
+  column(6,plotOutput("histogram",
+             brush = brushOpts("myBrush", direction = "x")))
+  ),
+  DTOutput("ourData")
+)
+
+server <- function(input, output){
+  
+  emphasisVector = reactiveVal(rep(T, nrow(country_metrics)))
+  
+  observeEvent(
+    input$myBrush,
+    emphasisVector(brushedPoints(country_metrics, input$myBrush, allRows = T)$selected_)
+  )
+  
+  output$scatterplot = renderPlot({ggplot(country_metrics, aes(x = GDP, y = HDI, alpha = emphasisVector()))+
+      geom_point()+
+      labs(
+        x = "Log10 of GDP"
+      )})
+  
+  output$histogram = renderPlot({ggplot(country_metrics, aes(Pop)) +
+  geom_histogram(fill = "grey")+
+  geom_histogram(data = filter(country_metrics, emphasisVector()), fill = "grey10")+
+  labs(
+    x = "Log10 of Population"
+  )})
+  
+  output$ourData = renderDT(country_metrics %>% filter(emphasisVector()))
+}
+
+shinyApp(ui, server)
+```
+
+```{r}
+# Preliminary data cleaning for both GDP and HDI over Time
+library(readxl)
+GDP_Time <- read_csv("../Data/GDP.csv", col_names = TRUE) 
+GDP_Time <- GDP_Time %>% pivot_wider(names_from = Series,
+                                     values_from = Value) %>% 
+  select(-c(Footnotes, Source))
+
+GDP_Time <- GDP_Time %>% 
+  group_by(`Region/Country/Area`, Year) %>% 
+  summarise(across(everything(), ~first(na.omit(.))), .groups = "drop")
+
+HDI_Time <- read_csv("../Data/HDI.csv") %>% 
+  mutate(across(c(`1990`,`2000`,`2010`,`2015`,`2020`,`2021`,`2022`,`2023`), as.numeric)) %>% 
+  pivot_longer(cols = c(`1990`,`2000`,`2010`,`2015`,`2020`,`2021`,`2022`,`2023`), names_to = "Year", values_to = "HDI") %>% 
+  drop_na()
+```
+
+```{r}
+# Testing for standardizing the country names
+t_0 <- HDI_Time %>% 
+  inner_join(x= HDI_Time, y = country_metrics, by = c("Country" = "country_name"), keep = TRUE) %>% 
+  select(Country, country_name) %>% distinct(country_name)
+t_1 <- HDI_Time %>% 
+  inner_join(x= HDI_Time, y = country_metrics, by = c("Country" = "country_name"), keep = TRUE) %>% 
+  select(Country, country_name) %>% distinct(Country)
+t_2 <- GDP_Time %>% 
+  inner_join(x = GDP_Time, y= country_metrics, by = c(`Region/Country/Area` = "country_name"), keep = TRUE) %>% 
+  select(`Region/Country/Area`, country_name) %>% distinct(country_name)
+
+m_0 <- country_metrics %>% select(country_name) %>% setdiff(t_0)
+m_1 <- HDI_Time %>% select(Country) %>% setdiff(t_1)
+m_2 <- country_metrics %>% select(country_name) %>% setdiff(t_2)
+```
+
+```{r}
+#GPD Box plots
+library(tsibble)
+
+countries <- country_metrics %>% distinct(country_name)
+
+GDP_ts <- GDP_Time %>%
+  filter(`Region/Country/Area` %in% countries$country_name) %>% 
+  as_tsibble(index = Year, key = `Region/Country/Area`)
+
+ggplot(GDP_ts, aes(y = Year, x = log10(`GDP in current prices (millions of US dollars)`), group = Year))+
+  geom_boxplot()
+```
+
+
+
