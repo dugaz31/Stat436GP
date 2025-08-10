@@ -5,7 +5,7 @@ runtime: shiny
 ```{r}
 library(tidyverse)
 library(shiny)
-country_metrics <- read_csv("../Data/countries_metric.csv") %>% 
+country_metrics <- read_csv("./Data/countries_metric.csv") %>% 
   mutate(HDI = as.double(`Human Development Index (HDI)`)) %>%
   mutate(Pop = log10(`Population (in millions)`)) %>%  
   mutate(GDP = log10(`Nominal GDP Per capita (in USD)`)) %>%
@@ -64,7 +64,7 @@ shinyApp(ui, server)
 ```{r}
 # Preliminary data cleaning for both GDP and HDI over Time
 library(readxl)
-GDP_Time <- read_csv("../Data/GDP.csv", col_names = TRUE) 
+GDP_Time <- read_csv("./Data/GDP.csv", col_names = TRUE) 
 GDP_Time <- GDP_Time %>% pivot_wider(names_from = Series,
                                      values_from = Value) %>% 
   select(-c(Footnotes, Source))
@@ -73,9 +73,10 @@ GDP_Time <- GDP_Time %>%
   group_by(`Region/Country/Area`, Year) %>% 
   summarise(across(everything(), ~first(na.omit(.))), .groups = "drop")
 
-HDI_Time <- read_csv("../Data/HDI.csv") %>% 
+HDI_Time <- read_csv("./Data/HDI.csv") %>% 
   mutate(across(c(`1990`,`2000`,`2010`,`2015`,`2020`,`2021`,`2022`,`2023`), as.numeric)) %>% 
-  pivot_longer(cols = c(`1990`,`2000`,`2010`,`2015`,`2020`,`2021`,`2022`,`2023`), names_to = "Year", values_to = "HDI") %>% 
+  pivot_longer(cols = c(`1990`,`2000`,`2010`,`2015`,`2020`,`2021`,`2022`,`2023`), names_to = "Year", values_to = "HDI") %>%
+  mutate(Year = as.numeric(Year)) %>% 
   drop_na()
 ```
 
@@ -108,6 +109,50 @@ GDP_ts <- GDP_Time %>%
 
 ggplot(GDP_ts, aes(y = Year, x = log10(`GDP in current prices (millions of US dollars)`), group = Year))+
   geom_boxplot()
+```
+
+```{r}
+library(gganimate)
+GDP_HDI_ts <- GDP_ts %>% inner_join(HDI_Time, by = c("Region/Country/Area" = "Country", 'Year'))
+
+p <- ggplot(GDP_HDI_ts, aes(y = HDI, x = log10(`GDP in current prices (millions of US dollars)`), group = Year)) +
+  geom_point()+
+  transition_time(GDP_HDI_ts$Year)+
+  ease_aes("linear")
+  
+
+```
+
+```{r}
+library(shinyWidgets)
+yrs <- unique(GDP_HDI_ts$Year)
+ui <- fluidPage(
+  
+  sliderTextInput(
+    "year",
+    "Select Year:",
+    choices = yrs,
+    selected = yrs[1],
+    animate = animationOptions(interval = 800, loop = TRUE)
+    
+  ),
+  
+    plotOutput("scatter")
+  
+)
+
+server <- function(input, output){
+  output$scatter <- renderPlot({
+    df_yrs <- GDP_HDI_ts %>% filter(Year == input$year)
+    
+    ggplot(df_yrs, aes(y = HDI, x = log10(`GDP in current prices (millions of US dollars)`))) +
+      geom_point() +
+      xlim(0, 8) +
+      ylim(0, 1)
+  })
+}
+
+shinyApp(ui, server)
 ```
 
 
