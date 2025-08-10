@@ -104,7 +104,8 @@ library(tsibble)
 countries <- country_metrics %>% distinct(country_name)
 
 GDP_ts <- GDP_Time %>%
-  filter(`Region/Country/Area` %in% countries$country_name) %>% 
+  filter(`Region/Country/Area` %in% countries$country_name) %>%
+  left_join(country_metrics %>% select(country_name, GINI), by = c(`Region/Country/Area` = "country_name")) %>% 
   as_tsibble(index = Year, key = `Region/Country/Area`)
 
 ggplot(GDP_ts, aes(y = Year, x = log10(`GDP in current prices (millions of US dollars)`), group = Year))+
@@ -125,30 +126,84 @@ p <- ggplot(GDP_HDI_ts, aes(y = HDI, x = log10(`GDP in current prices (millions 
 
 ```{r}
 library(shinyWidgets)
+library(plotly)
 yrs <- unique(GDP_HDI_ts$Year)
 ui <- fluidPage(
-  
-  sliderTextInput(
-    "year",
-    "Select Year:",
-    choices = yrs,
-    selected = yrs[1],
-    animate = animationOptions(interval = 800, loop = TRUE)
-    
-  ),
-  
-    plotOutput("scatter")
-  
+  titlePanel("HDI vs GDP Trends by Country"),
+  sidebarLayout(
+    sidebarPanel(
+      width = 3, 
+      sliderTextInput(
+        "year",
+        "Select Year:",
+        choices = yrs,
+        selected = yrs[1],
+        animate = animationOptions(interval = 800, loop = TRUE)
+      
+      ),
+      selectInput(
+        "country",
+        "Select Countries to Highlight",
+        choices = c(countries$country_name),
+        selected = c(sample(countries$country_name, 8)),
+        multiple = T
+      ),
+      helpText("Use the slider to animate through years or pause to explore the data at a given year. Select countries to see their trend line over time.")
+    ),
+    mainPanel(
+    width = 9,
+    plotlyOutput("scatter",
+               height = "600px"),
+    wellPanel(
+      style = "padding: 10px; margin-top: 10px;",
+        tags$em("GDP (in millions UDS) scaled by Log10")
+    )
+    )
+  )
 )
 
 server <- function(input, output){
-  output$scatter <- renderPlot({
+  output$scatter <- renderPlotly({
     df_yrs <- GDP_HDI_ts %>% filter(Year == input$year)
     
-    ggplot(df_yrs, aes(y = HDI, x = log10(`GDP in current prices (millions of US dollars)`))) +
-      geom_point() +
-      xlim(0, 8) +
-      ylim(0, 1)
+    highlighted_years <- GDP_HDI_ts %>% 
+      filter(`Region/Country/Area` %in% input$country, Year <= input$year) %>% 
+      arrange(`Region/Country/Area`, Year)
+    
+    p <- ggplot(df_yrs, 
+           aes(y = HDI, 
+               x = log10(`GDP in current prices (millions of US dollars)`),
+               text = paste(
+                  "Country:", `Region/Country/Area`,
+                  "<br>Year", Year,
+                  "<br>HDI:", round(HDI, 3),
+                  "<br>GDP per capita:", scales::comma(`GDP per capita (US dollars)`),
+                  "<br>GINI:", GINI
+                  )
+               )
+           ) +
+      geom_point(color = "grey50", alpha = 0.75) +
+      geom_point(data = df_yrs %>% filter(`Region/Country/Area` %in% input$country), 
+                 aes(colour =`Region/Country/Area`),
+                 size = 2.5)+
+      geom_path(data = highlighted_years, 
+                aes(y = HDI, 
+                    x = log10(`GDP in current prices (millions of US dollars)`), 
+                    colour =`Region/Country/Area`,
+                    group = `Region/Country/Area`
+                    ),
+                linewidth = 1.25)+
+      xlim(1.5, 8) +
+      ylim(0, 1) +
+      scale_color_viridis_d(option = "turbo")+
+      labs(
+        subtitle = "GPD Displayed in log scale to emphasize linear trend",
+        colour = "Country"
+      ) +
+      xlab("GDP")+
+      theme_minimal()
+    
+      ggplotly(p, tooltip = "text")
   })
 }
 
