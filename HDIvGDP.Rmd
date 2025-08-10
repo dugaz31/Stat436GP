@@ -10,6 +10,14 @@ country_metrics <- read_csv("./Data/countries_metric.csv") %>%
   mutate(Pop = log10(`Population (in millions)`)) %>%  
   mutate(GDP = log10(`Nominal GDP Per capita (in USD)`)) %>%
   mutate(GDP_PPP = log10(`GDP Per capita PPP (in USD)`)) %>% 
+  mutate(GINI = as.numeric(GINI)) %>% 
+  mutate(
+    GINI_bucket = cut(
+      GINI,
+      breaks = c(-Inf, 30, 35, 40, 45, 50, Inf),
+      labels = c("<30", "30-35", "35-40", "40-45", "45-50", "50+"),
+      right = FALSE)
+  ) %>% 
   filter(country_name != "Niger") %>% 
   drop_na()
 
@@ -24,6 +32,7 @@ ggplot(country_metrics, aes(Pop))+
 library(DT)
 
 ui <- fluidPage(
+  titlePanel("HDI vs GDP with Population distribution"),
   fluidRow(
   column(6,plotOutput("scatterplot",
              brush = "myBrush")),
@@ -42,20 +51,36 @@ server <- function(input, output){
     emphasisVector(brushedPoints(country_metrics, input$myBrush, allRows = T)$selected_)
   )
   
-  output$scatterplot = renderPlot({ggplot(country_metrics, aes(x = GDP, y = HDI, alpha = emphasisVector()))+
+  output$scatterplot = renderPlot({ggplot(country_metrics, aes(x = GDP, y = HDI, color = GINI_bucket, alpha = emphasisVector()))+
       geom_point()+
+      scale_color_viridis_d(option = "turbo")+
       labs(
-        x = "Log10 of GDP"
-      )})
+        x = "GDP",
+        color = 'GINI Range',
+        caption = "GDP is scaled by Log10 to create Linear Trend"
+      )+
+      theme_minimal()+
+      theme(plot.caption = element_text(size = 10, face = "bold.italic"))+
+      guides(alpha = "none")
+    })
   
-  output$histogram = renderPlot({ggplot(country_metrics, aes(Pop)) +
-  geom_histogram(fill = "grey")+
-  geom_histogram(data = filter(country_metrics, emphasisVector()), fill = "grey10")+
-  labs(
-    x = "Log10 of Population"
-  )})
+  output$histogram = renderPlot({
+    ggplot(country_metrics, aes(Pop)) +
+      geom_histogram(fill = "grey")+
+      geom_histogram(data = filter(country_metrics, emphasisVector()), fill = "grey10")+
+      labs(
+        x = "Log10 of Population",
+        caption = "Log10 of Population is used to emphisize normal distribution"
+      )+
+      theme_minimal()+
+      theme(plot.caption = element_text(size = 10, face = "bold.italic"))
+    })
   
-  output$ourData = renderDT(country_metrics %>% filter(emphasisVector()))
+  output$ourData = renderDT(country_metrics %>% 
+                              filter(emphasisVector()) %>% 
+                              select(-c(GDP,GDP_PPP,GINI_bucket,Pop, HDI)) %>% 
+                              rename('Population' = 'Population (in millions)', 'Country' = "country_name") %>% 
+                              select(Country, Population, `Human Development Index (HDI)`, GINI, everything()))
 }
 
 shinyApp(ui, server)
