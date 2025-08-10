@@ -1,0 +1,13 @@
+name: HDIvGDP_Pop
+title: HDIvGDP_Pop
+username: dugaz31
+account: dugaz31
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 15184923
+bundleId: 10754159
+url: https://dugaz31.shinyapps.io/HDIvGDP_Pop/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: Data/GDP.csv|Data/HDI.csv
